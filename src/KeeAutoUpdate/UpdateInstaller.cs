@@ -64,19 +64,51 @@ namespace KeeAutoUpdate
         }
 
         /// <summary>
-        /// Launches the verified Inno Setup installer silently. The installer's own
-        /// /CLOSEAPPLICATIONS + /RESTARTAPPLICATIONS handling closes the running KeePass
-        /// process (via Windows Restart Manager) and relaunches it once the update completes.
+        /// Launches the verified Inno Setup installer silently and arranges for
+        /// <paramref name="appExePath"/> to be relaunched once it finishes.
+        ///
+        /// The KeePass installer's Inno Setup script does not declare an AppMutex, so
+        /// /CLOSEAPPLICATIONS has nothing to detect and silently does nothing -- KeePass.exe
+        /// stays locked, the file just doesn't get replaced, and Setup still reports success.
+        /// So instead of relying on that, the caller must close the running KeePass process
+        /// itself (releasing the file lock) right after this returns; a small detached
+        /// watcher process (spawned here, independent of this process) waits for the
+        /// installer to exit and then starts KeePass back up.
         /// </summary>
-        public static void LaunchInstallerAndExit(string installerPath)
+        public static void LaunchInstallerAndRestart(string installerPath, string appExePath)
         {
-            var psi = new ProcessStartInfo
+            var installerPsi = new ProcessStartInfo
             {
                 FileName = installerPath,
-                Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
+                Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
                 UseShellExecute = true
             };
-            Process.Start(psi);
+
+            using (Process installer = Process.Start(installerPsi))
+            {
+                if (installer == null)
+                    throw new InvalidOperationException("The installer process could not be started.");
+
+                StartRestartWatcher(installer.Id, appExePath);
+            }
+        }
+
+        private static void StartRestartWatcher(int installerPid, string appExePath)
+        {
+            string script =
+                $"Wait-Process -Id {installerPid} -ErrorAction SilentlyContinue; " +
+                "Start-Sleep -Seconds 1; " +
+                $"Start-Process -FilePath '{appExePath.Replace("'", "''")}'";
+
+            var watcherPsi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command " +
+                            "\"" + script.Replace("\"", "\\\"") + "\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            Process.Start(watcherPsi);
         }
 
         private static void TryDelete(string path)

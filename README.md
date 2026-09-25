@@ -25,11 +25,14 @@ install them automatically.
    If either check fails, the file is deleted and **nothing is executed** — the user
    is shown the failure reason and pointed to the official download page instead.
 
-3. **Install** — the verified installer is launched with Inno Setup's silent flags
-   (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`).
-   `/CLOSEAPPLICATIONS` + `/RESTARTAPPLICATIONS` let the installer close the running
-   KeePass process itself (via Windows Restart Manager) and relaunch it once the
-   update is done — no separate watcher process needed.
+3. **Install** — the verified installer is launched silently
+   (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`). KeePass's own installer doesn't declare
+   an Inno Setup `AppMutex`, so `/CLOSEAPPLICATIONS` has nothing to detect and silently
+   does nothing — the running `KeePass.exe` stays locked and the installer would
+   otherwise "succeed" without actually replacing it. So the plugin closes KeePass
+   itself right after launching the installer, and spawns a small detached PowerShell
+   watcher (independent of the KeePass process) that waits for the installer to exit
+   and then starts KeePass back up.
 
 ## Settings (Tools ▸ KeeAutoUpdate)
 

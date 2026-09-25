@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -141,12 +143,55 @@ namespace KeeAutoUpdate
                 }
 
                 ShowStatus($"Installing KeePass {latest.Version}…");
-                RunOnUiThread(() => UpdateInstaller.LaunchInstallerAndExit(dl.LocalPath));
+                RunOnUiThread(() =>
+                {
+                    try
+                    {
+                        if (!System.IO.File.Exists(dl.LocalPath))
+                        {
+                            ShowStatus("KeePass update failed: the downloaded installer is gone.");
+                            ShowError("The verified installer file disappeared before it could be run " +
+                                      "(a security tool may have removed it):\n\n" + dl.LocalPath);
+                            return;
+                        }
+
+                        string appExePath = Process.GetCurrentProcess().MainModule.FileName;
+                        UpdateInstaller.LaunchInstallerAndRestart(dl.LocalPath, appExePath);
+
+                        // The installer can't replace KeePass.exe while this process still has it
+                        // open, and KeePass's installer has no AppMutex for /CLOSEAPPLICATIONS to
+                        // find and close it automatically -- so we close it ourselves. A detached
+                        // watcher (started above) relaunches KeePass once the installer finishes.
+                        ForceExitKeePass();
+                    }
+                    catch (Exception ex)
+                    {
+                        ShowStatus("KeePass update failed to launch.");
+                        ShowError("Could not start the installer:\n\n" + ex);
+                    }
+                });
             }
             finally
             {
                 Interlocked.Exchange(ref _checkInProgress, 0);
             }
+        }
+
+        /// <summary>
+        /// KeePass's public Close() on the main window just minimizes to tray if that option is
+        /// enabled -- only the private OnFileExit handler behind "File > Exit" actually exits
+        /// (it sets a private m_bForceExitOnce flag before calling Close()). There's no public
+        /// API for this, so we invoke that same handler via reflection instead of duplicating
+        /// its exact preconditions/flag-setting ourselves.
+        /// </summary>
+        private void ForceExitKeePass()
+        {
+            Form mainWindow = _host.MainWindow;
+            MethodInfo mi = mainWindow.GetType().GetMethod("OnFileExit", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (mi != null)
+                mi.Invoke(mainWindow, new object[] { this, EventArgs.Empty });
+            else
+                mainWindow.Close();
         }
 
         private void ShowStatus(string text) =>
