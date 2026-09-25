@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <RootNamespace>KeeAutoUpdate</RootNamespace>
+    <AssemblyName>KeeAutoUpdate</AssemblyName>
+    <LangVersion>7.3</LangVersion>
+    <Deterministic>true</Deterministic>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
+    <!-- Folder containing the installed KeePass.exe to build the plugin against.
+         Override with: msbuild -p:KeePassDir="C:\path\to\KeePass" -->
+    <KeePassDir Condition="'$(KeePassDir)' == ''">C:\Program Files\KeePass Password Safe 2</KeePassDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="KeePass">
+      <HintPath>$(KeePassDir)\KeePass.exe</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml.Linq" />
+  </ItemGroup>
+
+</Project>
